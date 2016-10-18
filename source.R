@@ -6,16 +6,58 @@ testing <- read.csv("testing.csv")
 
 # Tidy it up : remove the lines that are almost completely na and the ones that containg #DIV/0! because they are almost completely empty
 library(caret)
-good <- !sapply(training, function(x) mean(is.na(x))>0.95) &
-        sapply(training, function (x) sum(grepl("#DIV/0!", levels(x), fixed=TRUE))==0) &
-        !grepl("X|timestamp|window", names(training))
-training <- training[, good]
-testing <- testing[, good]
+toKeep <- grepl("user_name|^accel_|^magnet|^gyros|^roll|^pitch|^yaw|classe", names(training))
+trainingTK <- training[,toKeep] # TK stands for To Keep
+testingTK <- testing[,toKeep]
+inTrain <- createDataPartition(y=trainingTK$classe, p=0.75, list=FALSE)
+trainTK <- trainingTK[inTrain,]
+crossTK <- trainingTK[-inTrain,]
 
-#preProc <- preProcess(training)
-#trainingPP <- predict(preProc, training)
-#testingPP <- predict(preProc, testing)
-#which(training$gyros_forearm_z>200)
+a <- preProcess(trainTK[, 2:49], method=c("center", "scale", "pca"))
+trainPC <- predict(a, trainTK)
+
+fitAPC <- train(
+        trainPC[, !names(trainPC) %in% c("classe")],
+        as.factor(trainPC$classe=="A"),
+        method="glm", family = "binomial"
+)
+fitBPC <- train(
+        trainPC[, !names(trainPC) %in% c("classe")],
+        as.factor(trainPC$classe=="B"),
+        method="glm", family = "binomial"
+)
+fitCPC <- train(
+        trainPC[, !names(trainPC) %in% c("classe")],
+        as.factor(trainPC$classe=="C"),
+        method="glm", family = "binomial"
+)
+fitDPC <- train(
+        trainPC[, !names(trainPC) %in% c("classe")],
+        as.factor(trainPC$classe=="D"),
+        method="glm", family = "binomial"
+)
+fitEPC <- train(
+        trainPC[, !names(trainPC) %in% c("classe")],
+        as.factor(trainPC$classe=="E"),
+        method="glm", family = "binomial"
+)
+
+pred <- as.data.frame(cbind(
+        predict(fitAPC, type="prob")[2],
+        predict(fitBPC, type="prob")[2],
+        predict(fitCPC, type="prob")[2],
+        predict(fitDPC, type="prob")[2],
+        predict(fitEPC, type="prob")[2]))
+res <- as.factor(apply(pred, 1, which.max))
+levels(res) <- c("A", "B", "C", "D", "E")
+confusionMatrix(res, trainPC$classe)
+
+# Random foresting
+fitRF <- train(trainPC, trainPC$classe, method="rf")
+confusionMatrix(predict(fitRF), trainPC$classe)
+library(rattle)
+fancyRpartPlot(fitT$finalModel)
+
 # Some plots
 library(ggplot2)
 ggplot(training, aes(x = user_name, y=sqrt(accel_belt_x^2 + accel_belt_y^2 + accel_belt_z^2), fill=classe)) + 
@@ -28,6 +70,7 @@ ggplot(trainingScaled, aes(x = user_name, y=total_accel_belt, fill=classe)) +
         geom_boxplot()
 ggplot(training, aes(x = user_name, y=roll_forearm, fill=classe)) + 
         geom_boxplot()
+
 
 # preprocessing for each user
 library(dplyr)
@@ -110,3 +153,15 @@ fitRF <- train(trainingScaled[2:53], trainingScaled$classe, method="rf")
 confusionMatrix(predict(fitRF), trainingScaled$classe)
 library(rattle)
 fancyRpartPlot(fitT$finalModel)
+
+
+predTest <- as.data.frame(cbind(
+        predict(fitA, newdata=testingTK, type="prob")[2],
+        predict(fitB, newdata=testingTK, type="prob")[2],
+        predict(fitC, newdata=testingTK, type="prob")[2],
+        predict(fitD, newdata=testingTK, type="prob")[2],
+        predict(fitE, newdata=testingTK, type="prob")[2]))
+resTest <- as.factor(apply(predTest, 1, which.max))
+levels(resTest) <- c("A", "B", "C", "D", "E")
+
+resTest

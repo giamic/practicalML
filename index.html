@@ -127,6 +127,7 @@ $(document).ready(function () {
 <p>A teacher is considered fundamental in most human activities. One important task for teachers is to control the correct realization of an exercise. A wrong exercise can have a negative and lasting effect, for example, on health (imagine weight lifting), learning (imagine playing an instrument), etc. It is thus interesting to create new methods to identify wrong exercises.</p>
 <p>In this project, we study how to recognize the correct realization of a weight lifting exercise out of 5 possible ones. One element of the data set is made of data identifying the performer of the exercise, the time of the experiment, and by measures of acceleration and other quantities as obtained from sensors placed on the body of the performer as well as on the weight to lift. It is a problem of supervised learning, since an expert has classified each element in the data set. The experiment is performed on 6 different untrained men under the supervision of the aforementioned expert.</p>
 <p>We can obtain a good predicting ability if we train 5 logistic regression classifiers, one for each possible outcome, and then mix their results. The accuracy we obtain is close to 75 % and is almost constant on the training and the cross validation test, which means that we do not overfit the data.</p>
+<p>Random forest given a much better result, around 98%, at the price of a longer training time.</p>
 <div id="pre-processing-the-data" class="section level2">
 <h2>Pre-processing the data</h2>
 <p>Let’s take a look at the data we have:</p>
@@ -450,6 +451,7 @@ for (name in unique(crossTK$user_name)) {
 <p>We train a second model based on decision trees with the package rpart. However, we expect this to be less effective because there are many features and most of the numeric.</p>
 <pre><code>## Loading required package: rpart</code></pre>
 <pre class="r"><code>confusionMatrix(predict(fitT), trainTK$classe)</code></pre>
+<pre><code>## Loading required package: rpart</code></pre>
 <pre><code>## Confusion Matrix and Statistics
 ## 
 ##           Reference
@@ -517,7 +519,98 @@ for (name in unique(crossTK$user_name)) {
 </div>
 <div id="random-forest" class="section level3">
 <h3>Random forest</h3>
-<p>I tried, but it takes too long…</p>
+<p>Let’s try with random forests. First of all, we reduce the dimensionality, because random forest take a very long time. We do so through principal component analysis</p>
+<pre class="r"><code>PC &lt;- preProcess(trainTK[, 2:49], method=c(&quot;center&quot;, &quot;scale&quot;, &quot;pca&quot;))
+trainPC &lt;- predict(PC, trainTK)
+crossPC &lt;- predict(PC, crossTK)</code></pre>
+<p>Then we train the forest:</p>
+<pre><code>## Loading required package: randomForest</code></pre>
+<pre><code>## randomForest 4.6-12</code></pre>
+<pre><code>## Type rfNews() to see new features/changes/bug fixes.</code></pre>
+<pre><code>## 
+## Attaching package: 'randomForest'</code></pre>
+<pre><code>## The following object is masked from 'package:dplyr':
+## 
+##     combine</code></pre>
+<pre><code>## The following object is masked from 'package:ggplot2':
+## 
+##     margin</code></pre>
+<pre class="r"><code>confusionMatrix(predict(fitRF), trainPC$classe)</code></pre>
+<pre><code>## Loading required package: randomForest</code></pre>
+<pre><code>## randomForest 4.6-12</code></pre>
+<pre><code>## Type rfNews() to see new features/changes/bug fixes.</code></pre>
+<pre><code>## 
+## Attaching package: 'randomForest'</code></pre>
+<pre><code>## The following object is masked from 'package:dplyr':
+## 
+##     combine</code></pre>
+<pre><code>## The following object is masked from 'package:ggplot2':
+## 
+##     margin</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction    A    B    C    D    E
+##          A 4185    0    0    0    0
+##          B    0 2848    0    0    0
+##          C    0    0 2567    0    0
+##          D    0    0    0 2412    0
+##          E    0    0    0    0 2706
+## 
+## Overall Statistics
+##                                      
+##                Accuracy : 1          
+##                  95% CI : (0.9997, 1)
+##     No Information Rate : 0.2843     
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16  
+##                                      
+##                   Kappa : 1          
+##  Mcnemar's Test P-Value : NA         
+## 
+## Statistics by Class:
+## 
+##                      Class: A Class: B Class: C Class: D Class: E
+## Sensitivity            1.0000   1.0000   1.0000   1.0000   1.0000
+## Specificity            1.0000   1.0000   1.0000   1.0000   1.0000
+## Pos Pred Value         1.0000   1.0000   1.0000   1.0000   1.0000
+## Neg Pred Value         1.0000   1.0000   1.0000   1.0000   1.0000
+## Prevalence             0.2843   0.1935   0.1744   0.1639   0.1839
+## Detection Rate         0.2843   0.1935   0.1744   0.1639   0.1839
+## Detection Prevalence   0.2843   0.1935   0.1744   0.1639   0.1839
+## Balanced Accuracy      1.0000   1.0000   1.0000   1.0000   1.0000</code></pre>
+<pre class="r"><code>confusionMatrix(predict(fitRF, newdata=crossPC), crossPC$classe)</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction    A    B    C    D    E
+##          A 1388   21    0    0    0
+##          B    1  917   15    3    1
+##          C    2   11  836   37   10
+##          D    2    0    4  763    5
+##          E    2    0    0    1  885
+## 
+## Overall Statistics
+##                                           
+##                Accuracy : 0.9765          
+##                  95% CI : (0.9719, 0.9806)
+##     No Information Rate : 0.2845          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.9703          
+##  Mcnemar's Test P-Value : 1.065e-10       
+## 
+## Statistics by Class:
+## 
+##                      Class: A Class: B Class: C Class: D Class: E
+## Sensitivity            0.9950   0.9663   0.9778   0.9490   0.9822
+## Specificity            0.9940   0.9949   0.9852   0.9973   0.9993
+## Pos Pred Value         0.9851   0.9787   0.9330   0.9858   0.9966
+## Neg Pred Value         0.9980   0.9919   0.9953   0.9901   0.9960
+## Prevalence             0.2845   0.1935   0.1743   0.1639   0.1837
+## Detection Rate         0.2830   0.1870   0.1705   0.1556   0.1805
+## Detection Prevalence   0.2873   0.1911   0.1827   0.1578   0.1811
+## Balanced Accuracy      0.9945   0.9806   0.9815   0.9732   0.9907</code></pre>
+<p>Finally, we get to the result that random forest are the best algorithm to find the result, with an accuracy of 98%. However, the time needed to train this system is very large compared to the time needed to train the logistic regressors (more than ten times larger?).</p>
 </div>
 </div>
 

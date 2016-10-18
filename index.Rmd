@@ -22,6 +22,8 @@ The experiment is performed on 6 different untrained men under the supervision o
 We can obtain a good predicting ability if we train 5 logistic regression classifiers, one for each possible outcome, and then mix their results.
 The accuracy we obtain is close to 75 % and is almost constant on the training and the cross validation test, which means that we do not overfit the data.
 
+Random forest given a much better result, around 98%, at the price of a longer training time.
+
 ## Pre-processing the data
 
 ```{r data download, echo=FALSE}
@@ -262,4 +264,27 @@ We won't use this method.
 
 
 ### Random forest
-I tried, but it takes too long...
+Let's try with random forests.
+First of all, we reduce the dimensionality, because random forest take a very long time.
+We do so through principal component analysis
+```{r pca}
+PC <- preProcess(trainTK[, 2:49], method=c("center", "scale", "pca"))
+trainPC <- predict(PC, trainTK)
+crossPC <- predict(PC, crossTK)
+```
+
+Then we train the forest:
+```{r random forest, echo=FALSE, warning=FALSE, results="hide", cache=TRUE}
+fitRF <- train(
+        trainPC[, !names(trainPC) %in% c("classe")],
+        trainPC$classe,
+        method="rf"
+        )
+```
+```{r random forest results}
+confusionMatrix(predict(fitRF), trainPC$classe)
+confusionMatrix(predict(fitRF, newdata=crossPC), crossPC$classe)
+```
+
+Finally, we get to the result that random forest are the best algorithm to find the result, with an accuracy of 98%.
+However, the time needed to train this system is very large compared to the time needed to train the logistic regressors (more than ten times larger?).
