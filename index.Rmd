@@ -1,0 +1,265 @@
+---
+title: "Determining the quality of weight lifting"
+author: "Gianluca Micchi"
+date: "October 18, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+A teacher is considered fundamental in most human activities.
+One important task for teachers is to control the correct realization of an exercise.
+A wrong exercise can have a negative and lasting effect, for example, on health (imagine weight lifting), learning (imagine playing an instrument), etc.
+It is thus interesting to create new methods to identify wrong exercises.
+
+In this project, we study how to recognize the correct realization of a weight lifting exercise out of 5 possible ones.
+One element of the data set is made of data identifying the performer of the exercise, the time of the experiment, and by measures of acceleration and other quantities as obtained from sensors placed on the body of the performer as well as on the weight to lift.
+It is a problem of supervised learning, since an expert has classified each element in the data set.
+The experiment is performed on 6 different untrained men under the supervision of the aforementioned expert.
+
+We can obtain a good predicting ability if we train 5 logistic regression classifiers, one for each possible outcome, and then mix their results.
+The accuracy we obtain is close to 75 % and is almost constant on the training and the cross validation test, which means that we do not overfit the data.
+
+## Pre-processing the data
+
+```{r data download, echo=FALSE}
+# Take the data
+if(!file.exists("training.csv")) download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "training.csv")
+if(!file.exists("testing.csv")) download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "testing.csv")
+```
+Let's take a look at the data we have:
+```{r data loading, cache=TRUE}
+training <- read.csv("training.csv")
+testing <- read.csv("testing.csv")
+str(training)
+```
+
+It is quite a large amount of columns that we have there!
+We can divide them in three types:
+
+* identifiers, such as the user_name, the timestamp, and the classe, that tells which variation of the exercise was performed
+* raw data from the sensors, that start with "roll", "pitch", "yaw", gyros", "accel", "magnet"
+* derived data, such as average, standard deviation, variance etc.
+
+There seems to be a problem with the derived data: they are mostly empty or NAs, leaving just a handful of information.
+
+For our linear model, we decide to work only with the columns that are controlled.
+```{r data cleaning, cache=TRUE}
+toKeep <- grepl("user_name|^accel_|^magnet|^gyros|^roll|^pitch|^yaw|classe", names(training))
+trainingTK <- training[,toKeep] # TK stands for To Keep
+testingTK <- testing[,toKeep]
+```
+
+We then split the trainingTK set to have a cross-validation set at our disposal
+```{r create cross validation}
+set.seed(18)
+library(caret)
+inTrain <- createDataPartition(y=trainingTK$classe, p=0.75, list=FALSE)
+trainTK <- trainingTK[inTrain,]
+crossTK <- trainingTK[-inTrain,]
+```
+
+We are left with a categorical variable (user_name), the outcome (classe), and 48 numerical (or integer) predictors in between.
+
+
+## Exploratory analysis of the data
+Let's now make some plots to realize what the data looks like.
+```{r plots}
+library(ggplot2)
+ggplot(trainingTK, aes(x = user_name, y=accel_belt_z, fill=classe)) + 
+        geom_violin()
+ggplot(trainingTK, aes(x = user_name, y=pitch_forearm, fill=classe)) + 
+        geom_boxplot()
+```
+
+We see that the user is a determinant variable in the range of values that a parameter can have.
+To take this into account it is not sufficient to insert user_name as a variable inside the model we will fit.
+At first, we will first ignore this problem.
+We will then improve by normalizing all the variables on a per-user basis and retrain our classifiers.
+
+
+## Choice of the model
+We have a classification problem with lots of numerical variables.
+
+### Logistic classifiers
+The first thing I try is to train 5 logistic regression classifiers, one per each *classe* we have, and then combine their results.
+To combine, we predict using all 5 classifiers and take the result associated to the highest probability.
+
+Here are the results we obtain on the training set and on the cross validation set.
+```{r train logistic classifiers, echo=FALSE, warning=FALSE, results="hide", cache=TRUE}
+fitA <- train(
+        trainTK[, !names(trainTK) %in% c("classe")],
+        as.factor(trainTK$classe=="A"),
+        method="glm", family = "binomial"
+        )
+fitB <- train(
+        trainTK[, !names(trainTK) %in% c("classe")],
+        as.factor(trainTK$classe=="B"),
+        method="glm", family = "binomial"
+        )
+fitC <- train(
+        trainTK[, !names(trainTK) %in% c("classe")],
+        as.factor(trainTK$classe=="C"),
+        method="glm", family = "binomial"
+        )
+fitD <- train(
+        trainTK[, !names(trainTK) %in% c("classe")],
+        as.factor(trainTK$classe=="D"),
+        method="glm", family = "binomial"
+        )
+fitE <- train(
+        trainTK[, !names(trainTK) %in% c("classe")],
+        as.factor(trainTK$classe=="E"),
+        method="glm", family = "binomial"
+        )
+
+pred <- as.data.frame(cbind(
+        predict(fitA, type="prob")[2],
+        predict(fitB, type="prob")[2],
+        predict(fitC, type="prob")[2],
+        predict(fitD, type="prob")[2],
+        predict(fitE, type="prob")[2]))
+res <- as.factor(apply(pred, 1, which.max))
+levels(res) <- c("A", "B", "C", "D", "E")
+```
+```{r train results, echo=FALSE}
+confusionMatrix(res, trainTK$classe)
+```
+
+```{r predict cross validation, echo=FALSE, results="hide", cache=TRUE}
+predCross <- as.data.frame(cbind(
+        predict(fitA, newdata=crossTK, type="prob")[2],
+        predict(fitB, newdata=crossTK, type="prob")[2],
+        predict(fitC, newdata=crossTK, type="prob")[2],
+        predict(fitD, newdata=crossTK, type="prob")[2],
+        predict(fitE, newdata=crossTK, type="prob")[2]))
+resCross <- as.factor(apply(predCross, 1, which.max))
+levels(resCross) <- c("A", "B", "C", "D", "E")
+```
+```{r cross results}
+confusionMatrix(resCross, crossTK$classe)
+```
+
+The accuracy is around 75% and is basically the same for the training set and the cross validation set, a hint that there is no overfitting and that a regularization method is not needed.
+
+### Logistic regression with pre-processing the data
+Let's see what happens when scaling the data with respect to the user.
+We do it with the following function
+```{r function definition}
+scaleUser <- function(df, means, sdevs, name) {
+        if(dim(means)[2] != dim(sdevs)[2] | dim(means)[2] != dim(df)[2])
+                stop("means and/or standard deviations are not compatible with the data frame you chose")
+        if(sum(names(df) %in% c("user_name", "classe")) != 2) 
+                stop("user_name and classe not defined. Are you sure you submitted the correct data frame?")
+        
+        user <- which(df$user_name==name)
+        cols <- !names(df) %in% c("user_name", "classe")
+        m <- filter(means, user_name==name)
+        s <- filter(sdevs, user_name==name)
+        s[1, which(s[1, cols]==0)+1] <- 1
+        df[user, cols] <- (df[user, cols]-m[rep(1, length(user)), cols])/s[rep(1, length(user)), cols]
+        df
+}
+```
+```{r scaling}
+library(dplyr)
+means <- aggregate(trainTK, list(trainTK$user_name), function (x) if(!is.factor(x)) mean(x))
+means[, "user_name"] <- means[, "Group.1"]
+means <- means[, -1]
+sdevs <- aggregate(trainTK, list(trainTK$user_name), function (x) if(!is.factor(x)) sd(x))
+sdevs[, "user_name"] <- sdevs[, "Group.1"]
+sdevs <- sdevs[, -1]
+trainPP <- trainTK
+for (name in unique(trainTK$user_name)) {
+        trainPP <- scaleUser(trainPP, means, sdevs, name)
+}
+crossPP <- crossTK
+for (name in unique(crossTK$user_name)) {
+        crossPP <- scaleUser(crossPP, means, sdevs, name)
+}
+```
+```{r train logistic classifiers PP, echo=FALSE, warning=FALSE, results="hide", cache=TRUE}
+head(trainPP$classe=="A")
+sum(is.na(trainPP))
+fitAPP <- train(
+        trainPP[, !names(trainPP) %in% c("classe")],
+        as.factor(trainPP$classe=="A"),
+        method="glm", family = "binomial"
+        )
+fitBPP <- train(
+        trainPP[, !names(trainPP) %in% c("classe")],
+        as.factor(trainPP$classe=="B"),
+        method="glm", family = "binomial"
+        )
+fitCPP <- train(
+        trainPP[, !names(trainPP) %in% c("classe")],
+        as.factor(trainPP$classe=="C"),
+        method="glm", family = "binomial"
+        )
+fitDPP <- train(
+        trainPP[, !names(trainPP) %in% c("classe")],
+        as.factor(trainPP$classe=="D"),
+        method="glm", family = "binomial"
+        )
+fitEPP <- train(
+        trainPP[, !names(trainPP) %in% c("classe")],
+        as.factor(trainPP$classe=="E"),
+        method="glm", family = "binomial"
+        )
+
+predTrainPP <- as.data.frame(cbind(
+        predict(fitAPP, type="prob")[2],
+        predict(fitBPP, type="prob")[2],
+        predict(fitCPP, type="prob")[2],
+        predict(fitDPP, type="prob")[2],
+        predict(fitEPP, type="prob")[2]))
+resTrainPP <- as.factor(apply(predTrainPP, 1, which.max))
+levels(resTrainPP) <- c("A", "B", "C", "D", "E")
+```
+```{r train results PP, echo=FALSE}
+confusionMatrix(resTrainPP, trainPP$classe)
+```
+
+```{r predict cross validation PP, echo=FALSE, resTrainPPults="hide", cache=TRUE}
+predCrossPP <- as.data.frame(cbind(
+        predict(fitAPP, newdata=crossPP, type="prob")[2],
+        predict(fitBPP, newdata=crossPP, type="prob")[2],
+        predict(fitCPP, newdata=crossPP, type="prob")[2],
+        predict(fitDPP, newdata=crossPP, type="prob")[2],
+        predict(fitEPP, newdata=crossPP, type="prob")[2]))
+resCrossPP <- as.factor(apply(predCrossPP, 1, which.max))
+levels(resCrossPP) <- c("A", "B", "C", "D", "E")
+```
+```{r cross results PP}
+confusionMatrix(resCrossPP, crossPP$classe)
+```
+
+As we can see, the accuracy hasn't changed much.
+If any, it has decreased!
+
+We will ignore this model and stick with our original 5 linear regressions.
+
+
+### Decision trees
+We train a second model based on decision trees with the package rpart.
+However, we expect this to be less effective because there are many features and most of the numeric.
+```{r decision trees, echo=FALSE, warning=FALSE, results="hide", cache=TRUE} 
+fitT <- train(
+        trainTK[, !names(trainTK) %in% c("classe")],
+        trainTK$classe,
+        method="rpart"
+        )
+```
+```{r trees results}
+confusionMatrix(predict(fitT), trainTK$classe)
+confusionMatrix(predict(fitT, newdata=crossTK), crossTK$classe)
+```
+
+The accuracy is less than 50% and the D outcome is never predicted.
+We won't use this method.
+
+
+### Random forest
+I tried, but it takes too long...
